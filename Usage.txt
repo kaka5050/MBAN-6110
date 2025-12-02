@@ -1,0 +1,66 @@
+import pandas as pd
+from statistics import mode, StatisticsError
+
+# Convert Date column to datetime
+df_all['Date'] = pd.to_datetime(df_all['Date'])
+
+# Sort by Key Name and Date
+df_all = df_all.sort_values(['Key Name', 'Date']).reset_index(drop=True)
+
+# 🚫 Remove all rows where First Name == "GSE"
+df_all = df_all[df_all['First Name'] != "GSE"]
+
+# Dictionary to store usage stats per key
+key_usage_stats = {}
+
+# Group by Key Name
+for key_name, group in df_all.groupby('Key Name'):
+    group = group.sort_values('Date')
+    last_pickup_time = None
+    usage_times = []
+    cycle_count = 0
+
+    # Loop through rows using itertuples
+    for row in group.itertuples(index=False):
+        if row.Type == 'PICKUP':
+            last_pickup_time = row.Date
+        elif row.Type == 'DROPOFF' and last_pickup_time is not None:
+            diff = (row.Date - last_pickup_time).total_seconds() / 3600  # in hours
+            usage_times.append(diff)
+            cycle_count += 1
+            last_pickup_time = None
+
+    # Store stats for this key
+    if usage_times:
+        s = pd.Series(usage_times)
+        s = s[s >= 0]  # remove negatives
+
+        mean_val   = s.mean()
+        std_val    = s.std()
+        median_val = s.median()
+        max_val    = s.max()
+        exceed_14  = int(mean_val > 14)
+
+        # Mode logic: round to nearest hour, then apply mode
+        rounded = s.round()
+        try:
+            mode_val = mode(rounded)
+            mode_display = 'less than 1 hour' if mode_val < 1 else float(mode_val)
+        except StatisticsError:
+            mode_display = None
+
+        key_usage_stats[key_name] = {
+            'Mean Usage Time (hrs)': mean_val,
+            'Std Dev (hrs)': std_val,
+            'Median Usage Time (hrs)': median_val,
+            'Mode Usage Time': mode_display,
+            'Max Usage Time (hrs)': max_val,
+            'Exceeds 14 hrs': exceed_14,
+            'Total Cycles': cycle_count
+        }
+
+# Convert to DataFrame for review (store in usage_df2 for testing)
+usage_df2 = pd.DataFrame.from_dict(key_usage_stats, orient='index').reset_index()
+usage_df2.rename(columns={'index': 'Key Name'}, inplace=True)
+
+usage_df2
